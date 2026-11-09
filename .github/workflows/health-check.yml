@@ -1,0 +1,47 @@
+name: Health Check
+
+on:
+  schedule:
+    - cron: "23 1 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/health-check.yml"
+      - "scripts/health_check.py"
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    name: Check nodes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run health checks
+        id: check
+        run: |
+          mkdir -p health
+          python3 scripts/health_check.py
+
+      - name: Save status to repo
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add health/status.md
+          if git diff --cached --quiet; then
+            echo "status unchanged, nothing to commit"
+          else
+            git commit -m "health: update node status [skip ci]"
+            git push
+          fi
+
+      - name: Fail if a required target is down
+        if: steps.check.outcome == 'failure'
+        run: |
+          echo "At least one required target is DOWN - see health/status.md"
+          exit 1
